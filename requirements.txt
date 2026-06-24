@@ -1,0 +1,6 @@
+pandas
+pydantic
+scikit-learn
+python-dotenv
+huggingface_hub
+datasets
