@@ -1,7 +1,39 @@
+# data manipulation and analysis
 pandas
+numpy
+
+# data validation / schema for the Car model
 pydantic
+
+# traditional ML baselines (LinearRegression, RandomForest, CountVectorizer, etc.)
 scikit-learn
+
+# loads HF_TOKEN / GEMINI_API_KEY / WANDB_API_KEY from .env
 python-dotenv
+
+# push/pull datasets to/from Hugging Face Hub
 huggingface_hub
+
+# HF Dataset/DatasetDict objects used by Car.push_to_hub / from_hub
 datasets
+
+# unified API wrapper for calling Gemini (and other LLMs) in Day 2 preprocessing
 litellm
+
+# progress bars for the concurrent preprocessing batch runner
+tqdm
+
+# static plotting (quick sanity-check charts during cleaning/EDA)
+matplotlib
+
+# interactive plotting, used for the Day 3/Final results bar chart
+plotly
+
+# runs the .ipynb notebooks
+jupyter
+
+# lets VS Code/Jupyter attach to this venv as a kernel
+ipykernel
+
+# gradient-boosted trees baseline (Day 3)
+xgboost
