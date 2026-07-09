@@ -3,3 +3,4 @@ data/
 .env
 __pycache__/
 *.ipynb_checkpoints/
+notebooks/cars_vectorstore/
