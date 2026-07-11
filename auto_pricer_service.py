@@ -57,13 +57,16 @@ class AutoPricer:
         )
 
     @modal.method()
-    def price(self, description: str) -> float:
+    def price(self, description: str, context: str = "") -> float:
         import re
         import torch
         from transformers import set_seed
 
         set_seed(42)
-        prompt = f"{QUESTION}\n\n{description}\n\n{PREFIX}"
+        if context:
+            prompt = f"{QUESTION}\n\n{description}\n\n{context}\n\n{PREFIX}"
+        else:
+            prompt = f"{QUESTION}\n\n{description}\n\n{PREFIX}"
 
         inputs = self.tokenizer.encode(prompt, return_tensors="pt").to("cuda")
         with torch.no_grad():
