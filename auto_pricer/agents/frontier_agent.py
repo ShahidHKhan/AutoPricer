@@ -61,7 +61,12 @@ Car to price:
         return [{"role": "user", "content": message}]
 
     def price(self, description: str) -> float:
-        response = completion(model=GEMINI_MODEL, messages=self._messages_for(description))
+        response = completion(
+            model=GEMINI_MODEL,
+            messages=self._messages_for(description),
+            temperature=0,
+            seed=42,
+        )
         text = response.choices[0].message.content
         match = re.search(r"[-+]?\d*\.\d+|\d+", text.replace(",", ""))
         return float(match.group()) if match else 0.0
