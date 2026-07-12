@@ -22,9 +22,14 @@ class FrontierAgent(BaseAgent):
 
     Retrieves the N most similar cars from the ChromaDB vectorstore (built
     in notebooks/7_rag.ipynb) and injects them as context into the prompt.
-    Unlike SpecialistAgent, this works well with RAG since Gemini has no
-    rigid trained prompt shape to violate (single test: $11,075 vs $10,990
-    actual; 15-car sample MAE: $1,599.20).
+
+    Uses chain-of-thought prompting: Gemini reasons briefly about how the
+    target car compares to the retrieved comps (condition, mileage, trim
+    differences) before committing to a final number, rather than emitting
+    a bare price. This tends to produce better-calibrated estimates than
+    asking for a number with no reasoning. The response is parsed for an
+    explicit "FINAL PRICE: $X" line to avoid accidentally grabbing a comp's
+    price mentioned earlier in the reasoning.
 
     Uses temperature=0 for the least variance available, but Gemini is
     still not fully deterministic even so (~±$1-2k swing observed on
@@ -68,12 +73,20 @@ class FrontierAgent(BaseAgent):
     def _messages_for(self, description: str):
         docs, prices = self._find_similars(description)
         context = self._make_context(docs, prices)
-        message = f"""Estimate the price of this used car. Respond with the price only, no explanation.
+        message = f"""Estimate the price of this used car. Think through the comparison
+step by step before giving your final answer.
 
 Car to price:
 {description}
 
-{context}"""
+{context}
+
+Reason briefly about how this car compares to the listed comparables (condition,
+mileage, trim, any notable differences) and how that should move the price up or
+down relative to them. Then, on its own final line, give your answer in exactly
+this format with no other text on that line:
+
+FINAL PRICE: $<number>"""
         return [{"role": "user", "content": message}]
 
     def price(self, description: str) -> float:
@@ -83,5 +96,15 @@ Car to price:
             temperature=0,
         )
         text = response.choices[0].message.content
-        match = re.search(r"[-+]?\d*\.\d+|\d+", text.replace(",", ""))
-        return float(match.group()) if match else 0.0
+
+        # Primary: parse the explicit "FINAL PRICE: $X" line, so we don't
+        # accidentally grab a comp's price mentioned earlier in the reasoning.
+        final_match = re.search(r"FINAL PRICE:\s*\$?([\d,]+(?:\.\d+)?)", text, re.IGNORECASE)
+        if final_match:
+            return float(final_match.group(1).replace(",", ""))
+
+        # Fallback: if the model didn't follow the format, take the LAST
+        # number in the response rather than the first — reasoning tends to
+        # mention comp prices early and the actual answer late.
+        numbers = re.findall(r"[-+]?\d*\.\d+|\d+", text.replace(",", ""))
+        return float(numbers[-1]) if numbers else 0.0
