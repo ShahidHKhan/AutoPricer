@@ -75,3 +75,88 @@ class AutoPricer:
         contents = result.split(PREFIX)[1].replace(",", "")
         match = re.search(r"[-+]?\d*\.\d+|\d+", contents)
         return float(match.group()) if match else 0
+
+
+# --- Chrome extension endpoint: extraction + EnsembleAgent pricing ---
+
+extraction_image = (
+    Image.debian_slim()
+    .pip_install(
+        "torch", "sentence-transformers", "chromadb", "litellm", "pydantic",
+        "fastapi[standard]", "datasets",
+    )
+    .add_local_python_source("auto_pricer")
+)
+
+vectorstore_volume = Volume.from_name("cars-vectorstore-vol")
+VECTORSTORE_MOUNT = "/vol/cars_vectorstore"
+
+extraction_secrets = [
+    modal.Secret.from_name("huggingface-secret"),
+    modal.Secret.from_name("gemini-secret"),  # <-- confirm this name matches `modal secret list`
+]
+
+
+@app.cls(
+    image=extraction_image,
+    secrets=extraction_secrets,
+    timeout=120,
+    volumes={"/vol": vectorstore_volume},
+)
+class PricingEndpoint:
+    @modal.enter()
+    def setup(self):
+        # Runs once per container lifetime, not per-request — this is where
+        # SentenceTransformer + Chroma client loading gets hoisted to.
+        from auto_pricer.agents import EnsembleAgent
+        self.ensemble = EnsembleAgent(vectorstore_path=VECTORSTORE_MOUNT)
+
+    @modal.asgi_app()
+    def web(self):
+        from fastapi import FastAPI
+        from fastapi.middleware.cors import CORSMiddleware
+        from pydantic import BaseModel
+
+        web_app = FastAPI()
+        web_app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["POST"],
+            allow_headers=["*"],
+        )
+
+        class PriceRequest(BaseModel):
+            text: str
+
+        @web_app.post("/estimate")
+        def estimate(req: PriceRequest):
+            from auto_pricer.agents.extraction import (
+                extract_car_details, to_car, format_summary_for_pricing,
+            )
+
+            extracted = extract_car_details(req.text)
+            car = to_car(extracted)
+            car.summary = format_summary_for_pricing(extracted)
+
+            estimated_price = self.ensemble.price(car.summary)
+            asking_price = extracted.price
+            delta_pct = (
+                (asking_price - estimated_price) / estimated_price * 100
+                if estimated_price else 0.0
+            )
+
+            if delta_pct > 10:
+                verdict = "overpriced"
+            elif delta_pct < -10:
+                verdict = "underpriced"
+            else:
+                verdict = "fair"
+
+            return {
+                "asking_price": asking_price,
+                "estimated_price": round(estimated_price, 2),
+                "verdict": verdict,
+                "delta_pct": round(delta_pct, 1),
+            }
+
+        return web_app

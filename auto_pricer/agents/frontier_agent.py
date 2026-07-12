@@ -26,6 +26,13 @@ class FrontierAgent(BaseAgent):
     rigid trained prompt shape to violate (single test: $11,075 vs $10,990
     actual; 15-car sample MAE: $1,599.20).
 
+    Uses temperature=0 for the least variance available, but Gemini is
+    still not fully deterministic even so (~±$1-2k swing observed on
+    identical inputs). `seed` was tried but litellm (1.92.0, as deployed)
+    rejects it outright for Gemini models with UnsupportedParamsError —
+    dropped rather than worked around, since it wasn't reliably improving
+    determinism anyway.
+
     Cost: ~$0.0001-0.0002 per call at current Gemini 2.5 Flash pricing
     ($0.30/1M input, $2.50/1M output tokens, as of July 2026) — negligible
     at realistic usage volumes.
@@ -74,7 +81,6 @@ Car to price:
             model=GEMINI_MODEL,
             messages=self._messages_for(description),
             temperature=0,
-            seed=42,
         )
         text = response.choices[0].message.content
         match = re.search(r"[-+]?\d*\.\d+|\d+", text.replace(",", ""))
