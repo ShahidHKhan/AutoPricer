@@ -1,6 +1,15 @@
+# Environments
 .venv/
-data/
 .env
+
+# Python
 __pycache__/
-*.ipynb_checkpoints/
-notebooks/cars_vectorstore/
+*.pyc
+.ipynb_checkpoints/
+
+# Raw / derived data — large, reproducible from source or HF Hub, never committed
+data/
+jsonl/
+cars_vectorstore/
+cars_vectorstore.zip
+*.zip

@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 import chromadb
 from litellm import completion
@@ -6,7 +7,10 @@ from sentence_transformers import SentenceTransformer
 
 from .base_agent import BaseAgent
 
-VECTORSTORE_PATH = "cars_vectorstore"
+# Resolves to <project_root>/cars_vectorstore regardless of caller's cwd.
+# frontier_agent.py lives at <root>/auto_pricer/agents/frontier_agent.py,
+# so three .parent calls walks back up to <root>.
+VECTORSTORE_PATH = str(Path(__file__).resolve().parent.parent.parent / "cars_vectorstore")
 COLLECTION_NAME = "cars"
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 GEMINI_MODEL = "gemini/gemini-2.5-flash"
@@ -25,11 +29,16 @@ class FrontierAgent(BaseAgent):
     Cost: ~$0.0001-0.0002 per call at current Gemini 2.5 Flash pricing
     ($0.30/1M input, $2.50/1M output tokens, as of July 2026) — negligible
     at realistic usage volumes.
+
+    vectorstore_path defaults to an absolute path resolved from this
+    package's own location (not the caller's cwd) — safe to call from any
+    notebook or working directory. Pass an absolute path (e.g. a mounted
+    Modal Volume) to run this in a cloud/deployed context.
     """
 
-    def __init__(self):
+    def __init__(self, vectorstore_path: str = VECTORSTORE_PATH):
         self.encoder = SentenceTransformer(EMBEDDING_MODEL)
-        client = chromadb.PersistentClient(path=VECTORSTORE_PATH)
+        client = chromadb.PersistentClient(path=vectorstore_path)
         self.collection = client.get_or_create_collection(COLLECTION_NAME)
 
     def _find_similars(self, description: str, n_results: int = N_COMPARABLES):

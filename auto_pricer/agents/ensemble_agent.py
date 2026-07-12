@@ -1,5 +1,5 @@
 from .base_agent import BaseAgent
-from .frontier_agent import FrontierAgent
+from .frontier_agent import FrontierAgent, VECTORSTORE_PATH
 from .specialist_agent import SpecialistAgent
 
 
@@ -16,11 +16,15 @@ class EnsembleAgent(BaseAgent):
     specialist_weight defaults to 0.5 (the tested/validated split). Only
     change this if you've re-run the benchmark and have evidence a different
     weighting does better — don't guess at weights without data.
+
+    vectorstore_path is forwarded to FrontierAgent — override for a cloud
+    deployment (e.g. a mounted Modal Volume path), otherwise uses the same
+    local default as before.
     """
 
-    def __init__(self, specialist_weight: float = 0.5):
+    def __init__(self, specialist_weight: float = 0.5, vectorstore_path: str = VECTORSTORE_PATH):
         self.specialist = SpecialistAgent()
-        self.frontier = FrontierAgent()
+        self.frontier = FrontierAgent(vectorstore_path=vectorstore_path)
         self.specialist_weight = specialist_weight
 
     def price(self, description: str) -> float:
