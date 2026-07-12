@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "AutoPricer",
+  "version": "1.0",
+  "description": "Estimates whether a used car listing is fairly priced.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "*://*.craigslist.org/*",
+    "*://*.facebook.com/*",
+    "https://shahidhkhan--auto-pricer-service-pricingendpoint-web.modal.run/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

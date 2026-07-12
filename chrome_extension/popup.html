@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>AutoPricer</title>
+  <style>
+    body {
+      width: 300px;
+      font-family: -apple-system, Arial, sans-serif;
+      padding: 12px;
+    }
+    h2 {
+      font-size: 16px;
+      margin: 0 0 12px 0;
+    }
+    button {
+      width: 100%;
+      padding: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #result {
+      margin-top: 12px;
+      font-size: 14px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .verdict {
+      font-weight: bold;
+      text-transform: uppercase;
+      margin-top: 8px;
+    }
+    .verdict.overpriced { color: #c0392b; }
+    .verdict.underpriced { color: #27ae60; }
+    .verdict.fair { color: #2980b9; }
+    #error {
+      color: #c0392b;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <h2>AutoPricer</h2>
+  <button id="checkBtn">Check This Listing</button>
+  <div id="result"></div>
+  <div id="error"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
