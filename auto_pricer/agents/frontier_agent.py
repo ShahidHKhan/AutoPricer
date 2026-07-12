@@ -26,10 +26,13 @@ class FrontierAgent(BaseAgent):
     Uses chain-of-thought prompting: Gemini reasons briefly about how the
     target car compares to the retrieved comps (condition, mileage, trim
     differences) before committing to a final number, rather than emitting
-    a bare price. This tends to produce better-calibrated estimates than
-    asking for a number with no reasoning. The response is parsed for an
-    explicit "FINAL PRICE: $X" line to avoid accidentally grabbing a comp's
-    price mentioned earlier in the reasoning.
+    a bare price. The response is parsed for an explicit "FINAL PRICE: $X"
+    line to avoid accidentally grabbing a comp's price mentioned earlier in
+    the reasoning.
+
+    find_comps() and price() are split apart so a caller (e.g. a streaming
+    endpoint) can retrieve and display comps to the user before/while the
+    actual Gemini pricing call runs, without querying Chroma twice.
 
     Uses temperature=0 for the least variance available, but Gemini is
     still not fully deterministic even so (~±$1-2k swing observed on
@@ -70,8 +73,17 @@ class FrontierAgent(BaseAgent):
             context += f"Price: ${price:,.0f}\n{doc}\n\n"
         return context.strip()
 
-    def _messages_for(self, description: str):
-        docs, prices = self._find_similars(description)
+    def find_comps(self, description: str, n_results: int = N_COMPARABLES):
+        """Retrieve comparable listings without pricing — lets a caller
+        (e.g. the streaming endpoint) show comps to the user before/while
+        the actual Gemini pricing call runs."""
+        return self._find_similars(description, n_results)
+
+    def price(self, description: str, comps=None) -> float:
+        """comps, if provided, must be a (docs, prices) tuple from
+        find_comps() — avoids querying Chroma twice when the caller
+        already retrieved comps for display purposes."""
+        docs, prices = comps if comps is not None else self._find_similars(description)
         context = self._make_context(docs, prices)
         message = f"""Estimate the price of this used car. Think through the comparison
 step by step before giving your final answer.
@@ -87,24 +99,16 @@ down relative to them. Then, on its own final line, give your answer in exactly
 this format with no other text on that line:
 
 FINAL PRICE: $<number>"""
-        return [{"role": "user", "content": message}]
-
-    def price(self, description: str) -> float:
         response = completion(
             model=GEMINI_MODEL,
-            messages=self._messages_for(description),
+            messages=[{"role": "user", "content": message}],
             temperature=0,
         )
         text = response.choices[0].message.content
 
-        # Primary: parse the explicit "FINAL PRICE: $X" line, so we don't
-        # accidentally grab a comp's price mentioned earlier in the reasoning.
         final_match = re.search(r"FINAL PRICE:\s*\$?([\d,]+(?:\.\d+)?)", text, re.IGNORECASE)
         if final_match:
             return float(final_match.group(1).replace(",", ""))
 
-        # Fallback: if the model didn't follow the format, take the LAST
-        # number in the response rather than the first — reasoning tends to
-        # mention comp prices early and the actual answer late.
         numbers = re.findall(r"[-+]?\d*\.\d+|\d+", text.replace(",", ""))
         return float(numbers[-1]) if numbers else 0.0

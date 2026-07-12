@@ -130,33 +130,76 @@ class PricingEndpoint:
 
         @web_app.post("/estimate")
         def estimate(req: PriceRequest):
+            from fastapi.responses import StreamingResponse
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            import json
             from auto_pricer.agents.extraction import (
                 extract_car_details, to_car, format_summary_for_pricing,
             )
 
-            extracted = extract_car_details(req.text)
-            car = to_car(extracted)
-            car.summary = format_summary_for_pricing(extracted)
+            def generate():
+                def emit(stage, **kwargs):
+                    return json.dumps({"stage": stage, **kwargs}) + "\n"
 
-            estimated_price = self.ensemble.price(car.summary)
-            asking_price = extracted.price
-            delta_pct = (
-                (asking_price - estimated_price) / estimated_price * 100
-                if estimated_price else 0.0
-            )
+                yield emit("extracting")
+                extracted = extract_car_details(req.text)
 
-            if delta_pct > 10:
-                verdict = "overpriced"
-            elif delta_pct < -10:
-                verdict = "underpriced"
-            else:
-                verdict = "fair"
+                if extracted.mileage is None:
+                    yield emit("error", message="Couldn't determine mileage from this listing.")
+                    return
 
-            return {
-                "asking_price": asking_price,
-                "estimated_price": round(estimated_price, 2),
-                "verdict": verdict,
-                "delta_pct": round(delta_pct, 1),
-            }
+                yield emit(
+                    "extracted", title=extracted.title, make=extracted.make,
+                    model=extracted.model, year=extracted.year,
+                )
+
+                car = to_car(extracted)
+                car.summary = format_summary_for_pricing(extracted)
+
+                yield emit("retrieving_comps")
+                docs, prices = self.ensemble.frontier.find_comps(car.summary)
+                comps_preview = [
+                    {"price": p, "summary": d[:120]} for d, p in zip(docs, prices)
+                ]
+                yield emit("comps_retrieved", comps=comps_preview)
+
+                results = {}
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    futures = {
+                        executor.submit(self.ensemble.specialist.price, car.summary): "specialist",
+                        executor.submit(self.ensemble.frontier.price, car.summary, (docs, prices)): "frontier",
+                    }
+                    yield emit("agents_started")
+
+                    for future in as_completed(futures):
+                        name = futures[future]
+                        results[name] = future.result()
+                        yield emit(f"{name}_done", price=round(results[name], 2))
+
+                estimated_price = (
+                    self.ensemble.specialist_weight * results["specialist"]
+                    + (1 - self.ensemble.specialist_weight) * results["frontier"]
+                )
+                asking_price = extracted.price
+                delta_pct = (
+                    (asking_price - estimated_price) / estimated_price * 100
+                    if estimated_price else 0.0
+                )
+                if delta_pct > 10:
+                    verdict = "overpriced"
+                elif delta_pct < -10:
+                    verdict = "underpriced"
+                else:
+                    verdict = "fair"
+
+                yield emit(
+                    "final",
+                    asking_price=asking_price,
+                    estimated_price=round(estimated_price, 2),
+                    verdict=verdict,
+                    delta_pct=round(delta_pct, 1),
+                )
+
+            return StreamingResponse(generate(), media_type="application/x-ndjson")
 
         return web_app
